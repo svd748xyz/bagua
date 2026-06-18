@@ -1,0 +1,34 @@
+[project]
+name = "bagua-backend"
+version = "0.1.0"
+description = "八卦占卜 + 八字算命 后端服务"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110",
+    # 不用 [standard]：其依赖 watchfiles/httptools 是 C 扩展，
+    # 在当前 Python 3.14 free-threading 构建上需要 Rust+MSVC 编译。
+    # 纯 Python 的 uvicorn 在开发期足够（标准库 asyncio + h11）。
+    "uvicorn>=0.27",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "lunar-python>=1.4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "httpx>=0.27",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
