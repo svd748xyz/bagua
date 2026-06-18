@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import html2canvas from "html2canvas";
 import { divineCast, errorMessage } from "../api/client";
 import type { CastResponse, YaoOut } from "../api/types";
 import HexagramFigure from "../components/HexagramFigure";
@@ -11,7 +12,7 @@ import {
   ZHU_XI_RULES,
   getMovingYaoExplain,
 } from "../data/divineExplain";
-import { addHistory, copyToClipboard, formatDivineForShare } from "../utils/history";
+import { addHistory, copyToClipboard } from "../utils/history";
 import { exportDivineMarkdown, downloadMarkdown } from "../utils/export";
 
 type Phase = "idle" | "shaking" | "done";
@@ -79,15 +80,16 @@ export default function DivinePage() {
           />
         </div>
         <div className="btn-row">
-          <button
-            className="btn"
-            onClick={handleDivine}
-            disabled={phase === "shaking"}
-          >
-            {phase === "shaking" ? "掷币中…" : "诚心起卦"}
-          </button>
-          {phase === "done" && (
-            <button className="btn btn-secondary" onClick={handleReset}>
+          {phase !== "done" ? (
+            <button
+              className="btn"
+              onClick={handleDivine}
+              disabled={phase === "shaking"}
+            >
+              {phase === "shaking" ? "掷币中…" : "诚心起卦"}
+            </button>
+          ) : (
+            <button className="btn" onClick={handleReset}>
               再次起卦
             </button>
           )}
@@ -127,15 +129,28 @@ export default function DivinePage() {
 
 function CastResult({ data }: { data: CastResponse }) {
   const [showExplain, setShowExplain] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [mdCopied, setMdCopied] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+  const resultRef = useRef<HTMLDivElement>(null);
 
-  async function handleShare() {
-    const text = formatDivineForShare(data);
-    const ok = await copyToClipboard(text);
-    if (ok) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+  async function handleScreenshot() {
+    if (!resultRef.current) return;
+    setCapturing(true);
+    try {
+      const canvas = await html2canvas(resultRef.current, {
+        backgroundColor: "#f7f4ee",
+        scale: 2,
+        useCORS: true,
+        logging: false,
+      });
+      const link = document.createElement("a");
+      link.download = `金钱卦_${data.original.name}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+    } catch (err) {
+      console.error("截图失败:", err);
+    } finally {
+      setCapturing(false);
     }
   }
 
@@ -165,10 +180,11 @@ function CastResult({ data }: { data: CastResponse }) {
             {showExplain ? "隐藏白话解释" : "📖 查看白话解释"}
           </button>
           <button
-            className={"btn btn-share" + (copied ? " copied" : "")}
-            onClick={handleShare}
+            className="btn btn-screenshot"
+            onClick={handleScreenshot}
+            disabled={capturing}
           >
-            {copied ? "已复制 ✓" : "复制结果"}
+            {capturing ? "截图中…" : "📷 长截图"}
           </button>
         </div>
         <div className="btn-row" style={{ marginTop: 8 }}>
@@ -190,8 +206,10 @@ function CastResult({ data }: { data: CastResponse }) {
         </p>
       </div>
 
-      {/* 白话解释面板 */}
-      {showExplain && <DivineExplainPanel data={data} />}
+      {/* 结果内容区域（用于截图） */}
+      <div ref={resultRef}>
+        {/* 白话解释面板 */}
+        {showExplain && <DivineExplainPanel data={data} />}
 
       {data.question && (
         <div className="card">
@@ -237,6 +255,7 @@ function CastResult({ data }: { data: CastResponse }) {
 
       {/* 变卦详情 */}
       {data.changed && <HexagramDetailCard hexagram={data.changed} title="变卦" />}
+      </div>
     </>
   );
 }
