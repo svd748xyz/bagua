@@ -80,31 +80,29 @@ export default function BaziPage() {
         <h2 className="card-title">八字排盘</h2>
         <p className="hint">输入出生的公历或农历日期与时间，排出完整四柱八字。</p>
         <div className="field">
-          <label>日期（{calendar === "solar" ? "公历" : "农历"} YYYY-MM-DD）</label>
+          <label>日期（{calendar === "solar" ? "公历" : "农历"}）</label>
           <input
-            type="text"
+            type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            placeholder="1990-01-01"
             required
           />
         </div>
         <div className="row">
           <div className="field">
-            <label>时辰（HH:MM，24 小时制）</label>
+            <label>时辰</label>
             <input
-              type="text"
+              type="time"
               value={time}
               onChange={(e) => setTime(e.target.value)}
-              placeholder="12:00"
               required
             />
           </div>
           <div className="field">
             <label>历法</label>
             <select value={calendar} onChange={(e) => setCalendar(e.target.value as "solar" | "lunar")}>
-              <option value="solar">公历（阳历）</option>
-              <option value="lunar">农历（阴历）</option>
+              <option value="solar">公历</option>
+              <option value="lunar">农历</option>
             </select>
           </div>
           <div className="field">
