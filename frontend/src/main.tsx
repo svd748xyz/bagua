@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
 import App from "./App";
 import DivinePage from "./pages/DivinePage";
 import BaziPage from "./pages/BaziPage";
@@ -9,7 +9,7 @@ import "./styles/global.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <BrowserRouter>
+    <HashRouter>
       <Routes>
         <Route path="/" element={<App />}>
           <Route index element={<Navigate to="/divine" replace />} />
@@ -18,6 +18,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="history" element={<HistoryPage />} />
         </Route>
       </Routes>
-    </BrowserRouter>
+    </HashRouter>
   </React.StrictMode>
 );
