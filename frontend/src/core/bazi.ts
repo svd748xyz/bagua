@@ -227,10 +227,10 @@ export function buildChart(
   year: number, month: number, day: number, hour: number, minute: number = 0,
   options: {
     calendar?: string; gender?: string; liunian_years?: number[];
-    longitude?: number; dst_assumed?: boolean | null; province?: string; city?: string; birthplace?: string;
+    longitude?: number; dst_assumed?: boolean | null; province?: string; city?: string; district?: string; birthplace?: string;
   } = {}
 ): BaziChart {
-  const { calendar = 'solar', gender = 'm', liunian_years, longitude = 120, dst_assumed = null, province, city, birthplace } = options;
+  const { calendar = 'solar', gender = 'm', liunian_years, longitude = 120, dst_assumed = null, province, city, district, birthplace } = options;
 
   // 时间校正：解析出生地经度 + 夏令时 + 真太阳时
   let timeCorrection: BaziChart['time_correction'] = null;
@@ -238,7 +238,7 @@ export function buildChart(
     const resolvedLon = (() => {
       if (longitude !== 120) return longitude;           // 手动指定经度
       if (province && city) {
-        const loc = findLocation(province, city);
+        const loc = findLocation(province, city, district);
         if (loc) return loc.longitude;
       }
       return 120;

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { baziChart, errorMessage, fetchLocations } from "../api/client";
 import type { BaziResponse, PillarDetailOut, LocationsResponse } from "../api/types";
+import { listDistricts } from "../core/birthplace";
 import {
   SHISHEN_EXPLAIN,
   WUXING_EXPLAIN,
@@ -49,6 +50,8 @@ export default function BaziPage() {
   const [locations, setLocations] = useState<LocationsResponse | null>(null);
   const [province, setProvince] = useState<string>("");
   const [city, setCity] = useState<string>("");
+  const [district, setDistrict] = useState<string>("");
+  const [districtOptions, setDistrictOptions] = useState<{ name: string; longitude: number }[]>([]);
   const [dstAssumed, setDstAssumed] = useState<boolean | null>(null); // null=自动判断
 
   // 从历史记录恢复
@@ -74,6 +77,7 @@ export default function BaziPage() {
         date, time, calendar, gender,
         province: province || undefined,
         city: city || undefined,
+        district: district || undefined,
         dst_assumed: dstAssumed,
         birthplace: province && city ? `${province}${city}` : "",
       });
@@ -135,7 +139,7 @@ export default function BaziPage() {
             <label>出生地（可选·真太阳时校正）</label>
             <select
               value={province}
-              onChange={(e) => { setProvince(e.target.value); setCity(""); }}
+              onChange={(e) => { setProvince(e.target.value); setCity(""); setDistrict(""); setDistrictOptions([]); }}
             >
               <option value="">-- 省/直辖市 --</option>
               {locations?.provinces.map((p) => (
@@ -147,7 +151,7 @@ export default function BaziPage() {
             <label>市/区</label>
             <select
               value={city}
-              onChange={(e) => setCity(e.target.value)}
+                onChange={(e) => { setCity(e.target.value); setDistrict(""); setDistrictOptions(listDistricts(province, e.target.value)); }}
               disabled={!province}
             >
               <option value="">-- 选择市 --</option>
@@ -156,6 +160,19 @@ export default function BaziPage() {
                   <option key={c.name} value={c.name}>{c.name}</option>
                 ))
               }
+            </select>
+          </div>
+          <div className="field">
+            <label>区/县</label>
+            <select
+              value={district}
+              onChange={(e) => setDistrict(e.target.value)}
+              disabled={!city || districtOptions.length === 0}
+            >
+              <option value="">-- {districtOptions.length > 0 ? "选择区/县" : "无区县数据"} --</option>
+              {districtOptions.map((d) => (
+                <option key={d.name} value={d.name}>{d.name}</option>
+              ))}
             </select>
           </div>
           <div className="field" style={{ justifyContent: "flex-end" }}>

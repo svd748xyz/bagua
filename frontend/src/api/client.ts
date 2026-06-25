@@ -11,6 +11,7 @@ export interface BaziInput {
   gender: "m" | "f";
   province?: string | null;
   city?: string | null;
+  district?: string | null;
   longitude?: number | null;
   dst_assumed?: boolean | null;
   birthplace?: string;
@@ -39,6 +40,7 @@ export async function baziChart(input: BaziInput): Promise<BaziResponse> {
     gender: input.gender,
     province: input.province ?? undefined,
     city: input.city ?? undefined,
+    district: input.district ?? undefined,
     longitude: input.longitude ?? 120,
     dst_assumed: input.dst_assumed ?? null,
     birthplace: input.birthplace ?? undefined,
