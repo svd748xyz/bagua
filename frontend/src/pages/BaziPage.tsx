@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "react-router-dom";
-import { baziChart, errorMessage } from "../api/client";
-import type { BaziResponse, PillarDetailOut } from "../api/types";
+import { baziChart, errorMessage, fetchLocations } from "../api/client";
+import type { BaziResponse, PillarDetailOut, LocationsResponse } from "../api/types";
 import {
   SHISHEN_EXPLAIN,
   WUXING_EXPLAIN,
@@ -45,6 +45,12 @@ export default function BaziPage() {
   const [error, setError] = useState("");
   const [result, setResult] = useState<BaziResponse | null>(null);
 
+  // 时间校正相关状态
+  const [locations, setLocations] = useState<LocationsResponse | null>(null);
+  const [province, setProvince] = useState<string>("");
+  const [city, setCity] = useState<string>("");
+  const [dstAssumed, setDstAssumed] = useState<boolean | null>(null); // null=自动判断
+
   // 从历史记录恢复
   useEffect(() => {
     const state = location.state as { result?: BaziResponse } | null;
@@ -53,13 +59,24 @@ export default function BaziPage() {
     }
   }, [location.state]);
 
+  // 加载地理位置列表
+  useEffect(() => {
+    fetchLocations().then(setLocations).catch(() => {});
+  }, []);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setResult(null);
     setLoading(true);
     try {
-      const data = await baziChart({ date, time, calendar, gender });
+      const data = await baziChart({
+        date, time, calendar, gender,
+        province: province || undefined,
+        city: city || undefined,
+        dst_assumed: dstAssumed,
+        birthplace: province && city ? `${province}${city}` : "",
+      });
       setResult(data);
       // 保存历史
       addHistory({
@@ -111,6 +128,45 @@ export default function BaziPage() {
               <option value="m">男</option>
               <option value="f">女</option>
             </select>
+          </div>
+        </div>
+        <div className="row">
+          <div className="field">
+            <label>出生地（可选·真太阳时校正）</label>
+            <select
+              value={province}
+              onChange={(e) => { setProvince(e.target.value); setCity(""); }}
+            >
+              <option value="">-- 省/直辖市 --</option>
+              {locations?.provinces.map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label>市/区</label>
+            <select
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              disabled={!province}
+            >
+              <option value="">-- 选择市 --</option>
+              {(province && locations?.cities[province]) &&
+                locations.cities[province].map((c) => (
+                  <option key={c.name} value={c.name}>{c.name}</option>
+                ))
+              }
+            </select>
+          </div>
+          <div className="field" style={{ justifyContent: "flex-end" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", paddingTop: 6 }}>
+              <input
+                type="checkbox"
+                checked={dstAssumed === true}
+                onChange={(e) => setDstAssumed(e.target.checked ? true : null)}
+              />
+              <span>出生在夏令时期间<br />(1986-1991 夏)</span>
+            </label>
           </div>
         </div>
         <button className="btn" type="submit" disabled={loading}>
@@ -201,6 +257,7 @@ function BaziResult({ data }: { data: BaziResponse }) {
       <DaYunCard data={data} />
       <LiuNianCard data={data} />
       <ShenShaCard data={data} />
+      {data.time_correction && <TimeCorrectionCard data={data} />}
       <ElementsCard data={data} maxEl={maxEl} />
     </>
   );
@@ -725,6 +782,40 @@ function ElementsCard({ data, maxEl }: { data: BaziResponse; maxEl: number }) {
       <p className="hint" style={{ marginTop: 12 }}>
         注：此为简化统计（天干+地支本气，共 8 位）。详细五行力量请参考上方"命理分析"中的五行力量图。
       </p>
+    </div>
+  );
+}
+
+/** 时间校正信息卡片（夏令时 + 真太阳时）。 */
+function TimeCorrectionCard({ data }: { data: BaziResponse }) {
+  const tc = data.time_correction;
+  if (!tc || !tc.applied) return null;
+
+  const lines: string[] = [];
+  lines.push(`原始输入时间：${tc.original_time}`);
+  lines.push(`校正后排盘时间：${tc.corrected_time}`);
+  if (tc.dst_applied) {
+    lines.push("已做夏令时还原（-1 小时）");
+  }
+  if (Math.abs(tc.longitude_offset_min) > 0.1) {
+    const sign = tc.longitude_offset_min > 0 ? "+" : "";
+    lines.push(`出生地经度校正：${sign}${tc.longitude_offset_min.toFixed(1)} 分钟（东经 ${tc.longitude}°）`);
+  }
+  if (Math.abs(tc.eot_min) > 0.5) {
+    const sign = tc.eot_min > 0 ? "+" : "";
+    lines.push(`均时差校正：${sign}${tc.eot_min.toFixed(1)} 分钟`);
+  }
+  lines.push(`出生地：${tc.birthplace || `东经 ${tc.longitude}°`}`);
+
+  return (
+    <div className="card" style={{ borderLeft: "3px solid var(--accent)" }}>
+      <h2 className="card-title">时间校正</h2>
+      <p className="hint" style={{ marginBottom: 8 }}>
+        排盘使用经夏令时还原与真太阳时校正后的时间
+      </p>
+      {lines.map((l, i) => (
+        <p key={i} style={{ margin: "4px 0", fontSize: 14 }}>{l}</p>
+      ))}
     </div>
   );
 }

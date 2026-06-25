@@ -60,6 +60,15 @@ class BaziRequest(BaseModel):
     liunian_years: list[int] | None = Field(
         default=None, description="需要排流年的公历年份，留空则默认取当前年前后若干年"
     )
+    # 时间校正参数
+    province: str | None = Field(default=None, description="出生地省/直辖市")
+    city: str | None = Field(default=None, description="出生地市/区")
+    longitude: float | None = Field(default=None, description="出生地东经度数（自动根据省/市查，也可手动指定）")
+    dst_assumed: bool | None = Field(
+        default=None,
+        description="夏令时：null=自动判定 / true=是夏令时(减1小时) / false=不是"
+    )
+    birthplace: str = Field(default="", description="出生地显示名（仅记录用）")
 
 
 class PillarOut(BaseModel):
@@ -120,6 +129,31 @@ class ExtraPillarsOut(BaseModel):
     shen_gong_nayin: str
 
 
+class TimeCorrectionOut(BaseModel):
+    """时间校正信息。"""
+    original_time: str          # 用户输入的原始时间
+    corrected_time: str         # 校正后用于排盘的真太阳时
+    dst_applied: bool           # 是否做了夏令时还原
+    longitude: float            # 使用的经度
+    longitude_offset_min: float # 经度校正（分钟）
+    eot_min: float              # 均时差（分钟）
+    applied: bool               # 是否实际做了校正
+    birthplace: str             # 出生地显示名
+
+
+class LocationItem(BaseModel):
+    """一个地理位置。"""
+    name: str          # 地名
+    longitude: float   # 东经度数
+    full_name: str     # 完整名（如"四川成都"）
+
+
+class LocationsResponse(BaseModel):
+    """省/市列表响应。"""
+    provinces: list[str]                           # 省名列表
+    cities: dict[str, list[LocationItem]]          # 省 → 市列表
+
+
 class BaziResponse(BaseModel):
     pillars: dict[str, PillarOut]               # year/month/day/hour（向后兼容）
     day_master: str
@@ -138,6 +172,8 @@ class BaziResponse(BaseModel):
     shensha_detail: dict[str, dict] = {}        # 神煞详细（含含义解释）
     # 进阶分析
     analysis: dict = {}                         # 五行强弱、日主旺衰、格局、用神喜忌
+    # 时间校正
+    time_correction: TimeCorrectionOut | None = None
 
 
 # ---------- 通用 ----------

@@ -112,6 +112,22 @@ class BaziChart:
     extra: ExtraPillars
     yun: YunInfo | None = None
     liunian: list[LiuNian] = field(default_factory=list)
+    # 时间校正信息（夏令时 + 真太阳时）
+    time_correction: "TimeCorrectionInfo | None" = None
+
+
+@dataclass(frozen=True)
+class TimeCorrectionInfo:
+    """时间校正信息，展示给用户说明排盘用的是哪个时间。"""
+
+    original_time: str          # 用户输入的原始时间
+    corrected_time: str         # 校正后用于排盘的真太阳时
+    dst_applied: bool           # 是否做了夏令时还原
+    longitude: float            # 使用的经度
+    longitude_offset_min: float # 经度校正（分钟）
+    eot_min: float              # 均时差（分钟）
+    applied: bool               # 是否实际做了校正（经度≠120 或夏令时）
+    birthplace: str             # 出生地显示名
 
 
 _PILLAR_KEYS = ("Year", "Month", "Day", "Time")
@@ -156,17 +172,49 @@ def build_chart(
     calendar: str = "solar",
     gender: str = "m",
     liunian_years: list[int] | None = None,
+    longitude: float = 120.0,
+    dst_assumed: bool | None = None,
+    birthplace: str = "",
 ) -> BaziChart:
     """构建八字排盘。
 
     calendar: "solar"(公历) / "lunar"(农历)
     gender:   "m" / "f"，决定大运顺逆排
     liunian_years: 需要排流年的公历年份列表（默认取起运后 6 步对应的若干年）
+
+    时间校正参数（仅对公历生效）：
+        longitude:   出生地东经度数（默认 120=北京时间基准，不校正）
+        dst_assumed: 夏令时处理
+                     None  = 自动判断（按 1986-1991 夏令时日期表）
+                     True  = 强制视为夏令时（减1小时）
+                     False = 强制视为非夏令时
+        birthplace:  出生地显示名（仅记录用，实际校正用 longitude）
+
+    校正流水线：夏令时还原 → 经度校正 → 均时差 → 得到真太阳时，用于排盘。
     """
+    from datetime import datetime
+    from app.core.bazi.time_correction import correct_time, is_cn_dst
+
     if calendar == "solar":
-        solar = Solar.fromYmdHms(year, month, day, hour, minute, 0)
+        # 判断是否需要做时间校正
+        need_correction = (
+            abs(longitude - 120.0) > 0.001      # 出生地不在北京时间基准经线
+            or (dst_assumed is True)              # 用户明确说"是夏令时"
+            or (dst_assumed is None and is_cn_dst(datetime(year, month, day, hour, minute)))
+            # ↑ 默认自动判定，日期落在夏令时区间则校正
+        )
+        if need_correction:
+            original = datetime(year, month, day, hour, minute, 0)
+            correction = correct_time(original, longitude=longitude, dst_assumed=dst_assumed)
+            c = correction.corrected
+            solar = Solar.fromYmdHms(c.year, c.month, c.day, c.hour, c.minute, c.second)
+        else:
+            correction = None
+            solar = Solar.fromYmdHms(year, month, day, hour, minute, 0)
         lunar = solar.getLunar()
     elif calendar == "lunar":
+        # 农历：不做夏令时/真太阳时校正（农历输入本身已是确定时间）
+        correction = None
         lunar = Lunar.fromYmdHms(year, month, day, hour, minute, 0)
         solar = lunar.getSolar()
     else:
@@ -201,6 +249,21 @@ def build_chart(
         liunian_years = _default_liunian_years(yun)
     liunian = _build_liunian(ec, lunar, liunian_years)
 
+    # 构造时间校正信息（公历且确实校正时才有）
+    time_correction_info: TimeCorrectionInfo | None = None
+    if correction is not None:
+        applied = correction.dst_applied or abs(correction.longitude_offset_min) > 0.01
+        time_correction_info = TimeCorrectionInfo(
+            original_time=correction.original.strftime("%Y-%m-%d %H:%M:%S"),
+            corrected_time=correction.corrected.strftime("%Y-%m-%d %H:%M:%S"),
+            dst_applied=correction.dst_applied,
+            longitude=correction.longitude,
+            longitude_offset_min=correction.longitude_offset_min,
+            eot_min=correction.eot_min,
+            applied=applied,
+            birthplace=birthplace,
+        )
+
     return BaziChart(
         pillars=pillar_map,
         day_master=pillars["Day"].gan,
@@ -213,6 +276,7 @@ def build_chart(
         extra=extra,
         yun=yun,
         liunian=liunian,
+        time_correction=time_correction_info,
     )
 
 

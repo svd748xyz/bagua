@@ -110,6 +110,32 @@ export interface BaziResponse {
     geju?: { name: string; description: string };
     yongshen?: { yongshen: string; xishen: string; jishen: string; description: string };
   };
+  time_correction?: TimeCorrectionOut | null;
+}
+
+/** 时间校正信息。 */
+export interface TimeCorrectionOut {
+  original_time: string;
+  corrected_time: string;
+  dst_applied: boolean;
+  longitude: number;
+  longitude_offset_min: number;
+  eot_min: number;
+  applied: boolean;
+  birthplace: string;
+}
+
+/** 地理位置项。 */
+export interface LocationItem {
+  name: string;
+  longitude: number;
+  full_name: string;
+}
+
+/** 省/市列表。 */
+export interface LocationsResponse {
+  provinces: string[];
+  cities: Record<string, LocationItem[]>;
 }
 
 export interface ApiError {

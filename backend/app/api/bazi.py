@@ -8,14 +8,18 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from app.core.bazi import build_chart, count_elements, find_shensha, find_shensha_with_desc, analyze_bazi
+from app.core.bazi.birthplace import find_location, list_provinces, list_cities
 from app.schemas.models import (
     BaziRequest,
     BaziResponse,
     DaYunOut,
     ExtraPillarsOut,
     LiuNianOut,
+    LocationItem,
+    LocationsResponse,
     PillarDetailOut,
     PillarOut,
+    TimeCorrectionOut,
     YunOut,
 )
 
@@ -48,6 +52,41 @@ def _validate_calendar_gender(calendar: str, gender: str) -> None:
         )
 
 
+def _resolve_longitude(req: BaziRequest) -> tuple[float, str]:
+    """从请求中解析出生地经度与显示名。
+
+    优先级：longitude 直接指定 > province+city 查表 > 默认 120.0。
+    """
+    if req.longitude is not None:
+        return req.longitude, req.birthplace or f"东经{req.longitude}°"
+    if req.province and req.city:
+        loc = find_location(req.province, req.city)
+        if loc is not None:
+            return loc.longitude, loc.full_name
+    return 120.0, req.birthplace or ""
+
+
+# ---------- 地理位置接口 ----------
+
+@router.get("/bazi/locations", response_model=LocationsResponse)
+def get_locations() -> LocationsResponse:
+    """返回省/市列表供前端下拉框使用。"""
+    provinces = list_provinces()
+    cities_map: dict[str, list[LocationItem]] = {}
+    for prov in provinces:
+        city_names = list_cities(prov)
+        items: list[LocationItem] = []
+        for name in city_names:
+            loc = find_location(prov, name)
+            if loc is not None:
+                items.append(LocationItem(name=loc.name, longitude=loc.longitude, full_name=loc.full_name))
+        cities_map[prov] = items
+    return LocationsResponse(provinces=provinces, cities=cities_map)
+
+
+# ---------- 八字排盘接口 ----------
+
+
 @router.post("/bazi/chart", response_model=BaziResponse)
 def bazi_chart(req: BaziRequest) -> BaziResponse:
     """八字完整排盘。"""
@@ -59,10 +98,15 @@ def bazi_chart(req: BaziRequest) -> BaziResponse:
             detail={"code": "YEAR_OUT_OF_RANGE", "message": "年份需在 1800-2200 之间"},
         )
 
+    longitude, birthplace = _resolve_longitude(req)
+
     chart = build_chart(
         y, m, d, h, minute,
         calendar=req.calendar, gender=req.gender,
         liunian_years=req.liunian_years,
+        longitude=longitude,
+        dst_assumed=req.dst_assumed,
+        birthplace=birthplace,
     )
     elements = count_elements(chart)
     analysis = analyze_bazi(chart)
@@ -149,4 +193,14 @@ def bazi_chart(req: BaziRequest) -> BaziResponse:
                 "description": analysis.yongshen.description,
             },
         },
+        time_correction=TimeCorrectionOut(
+            original_time=chart.time_correction.original_time,
+            corrected_time=chart.time_correction.corrected_time,
+            dst_applied=chart.time_correction.dst_applied,
+            longitude=chart.time_correction.longitude,
+            longitude_offset_min=chart.time_correction.longitude_offset_min,
+            eot_min=chart.time_correction.eot_min,
+            applied=chart.time_correction.applied,
+            birthplace=chart.time_correction.birthplace,
+        ) if chart.time_correction else None,
     )

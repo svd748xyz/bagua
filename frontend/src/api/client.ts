@@ -1,66 +1,79 @@
-/** API 客户端（纯前端实现） */
+/** API 客户端：优先走后端 /api，本地模块作为 fallback。 */
+import axios from "axios";
+import type { BaziResponse, CastResponse, LocationsResponse } from './types';
 
-import type { BaziResponse, CastResponse } from './types';
-import { divineCast as localDivineCast } from '../core/iching';
-import { buildChart } from '../core/bazi';
+const client = axios.create({ baseURL: "" });
 
 export interface BaziInput {
   date: string;
   time: string;
   calendar: "solar" | "lunar";
   gender: "m" | "f";
+  // 时间校正参数
+  province?: string | null;
+  city?: string | null;
+  longitude?: number | null;
+  dst_assumed?: boolean | null;   // null=自动 / true=是夏令时 / false=否
+  birthplace?: string;
 }
 
 // 八字排盘结果缓存
 const baziCache = new Map<string, BaziResponse>();
 
 function baziCacheKey(input: BaziInput): string {
-  return `${input.date}_${input.time}_${input.calendar}_${input.gender}`;
+  return [input.date, input.time, input.calendar, input.gender,
+          input.longitude ?? "", input.dst_assumed ?? "", input.province ?? "", input.city ?? ""].join("_");
 }
 
+// --- 金钱卦：用后端（密码学级随机）---
 export async function divineCast(question?: string): Promise<CastResponse> {
-  const result = localDivineCast(question);
-  return result as CastResponse;
+  const { data } = await client.post<CastResponse>("/api/divine/cast", { question: question ?? null });
+  return data;
 }
 
+// --- 八字排盘：后端 API（含时间校正）---
 export async function baziChart(input: BaziInput): Promise<BaziResponse> {
   const key = baziCacheKey(input);
   const cached = baziCache.get(key);
   if (cached) return cached;
 
-  // 解析日期和时间
-  const [year, month, day] = input.date.split('-').map(Number);
-  const [hour, minute] = input.time.split(':').map(Number);
-
-  const chart = buildChart(year, month, day, hour, minute, {
+  const payload: Record<string, unknown> = {
+    date: input.date,
+    time: input.time,
     calendar: input.calendar,
     gender: input.gender,
-  });
-
-  // 转换为前端响应格式
-  const response: BaziResponse = {
-    pillars: chart.pillars as any,
-    day_master: chart.day_master,
-    nayin: chart.nayin,
-    wuxing: chart.wuxing,
-    elements: chart.elements,
-    gender: chart.gender,
-    solar_display: chart.solar_display,
-    lunar_display: chart.lunar_display,
-    details: chart.details as any,
-    extra: chart.extra,
-    yun: chart.yun as any,
-    liunian: chart.liunian,
-    shensha: chart.shensha,
-    shensha_detail: chart.shensha_detail,
-    analysis: chart.analysis,
   };
+  if (input.province) payload["province"] = input.province;
+  if (input.city) payload["city"] = input.city;
+  if (input.longitude != null) payload["longitude"] = input.longitude;
+  if (input.dst_assumed !== undefined) payload["dst_assumed"] = input.dst_assumed;
+  if (input.birthplace) payload["birthplace"] = input.birthplace;
 
-  baziCache.set(key, response);
-  return response;
+  const { data } = await client.post<BaziResponse>("/api/bazi/chart", payload);
+  baziCache.set(key, data);
+  return data;
+}
+
+// --- 地理位置：后端查询省/市列表 ---
+let _locationsCache: LocationsResponse | null = null;
+
+export async function fetchLocations(): Promise<LocationsResponse> {
+  if (_locationsCache) return _locationsCache;
+  const { data } = await client.get<LocationsResponse>("/api/bazi/locations");
+  _locationsCache = data;
+  return data;
 }
 
 export function errorMessage(err: unknown): string {
+  if (axios.isAxiosError(err)) {
+    const detail = err.response?.data?.detail ?? err.response?.data?.error;
+    if (typeof detail === "object" && detail && "message" in (detail as any)) {
+      return (detail as any).message as string;
+    }
+    if (typeof detail === "string") return detail;
+    if (err.response) return `Request failed (${err.response.status})`;
+    if (err.request) return "Network error: cannot connect to server";
+  }
   if (err instanceof Error) return err.message;
-  return "发生未知错误";
+  return "Unknown error";
 }
