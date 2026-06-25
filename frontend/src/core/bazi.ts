@@ -1,6 +1,8 @@
 /** 八字排盘核心算法（纯前端实现） */
 
 import { Solar, Lunar } from 'lunar-typescript';
+import { correctTime } from './time_correction';
+import { findLocation } from './birthplace';
 
 export interface Pillar {
   gan: string;
@@ -76,6 +78,16 @@ export interface BaziChart {
     geju?: { name: string; description: string };
     yongshen?: { yongshen: string; xishen: string; jishen: string; description: string };
   };
+  time_correction?: {
+    original_time: string;
+    corrected_time: string;
+    dst_applied: boolean;
+    longitude: number;
+    longitude_offset_min: number;
+    eot_min: number;
+    applied: boolean;
+    birthplace: string;
+  } | null;
 }
 
 // 五行映射
@@ -213,9 +225,46 @@ function findShensha(chart: BaziChart): Record<string, string[]> {
 // 八字排盘主函数
 export function buildChart(
   year: number, month: number, day: number, hour: number, minute: number = 0,
-  options: { calendar?: string; gender?: string; liunian_years?: number[] } = {}
+  options: {
+    calendar?: string; gender?: string; liunian_years?: number[];
+    longitude?: number; dst_assumed?: boolean | null; province?: string; city?: string; birthplace?: string;
+  } = {}
 ): BaziChart {
-  const { calendar = 'solar', gender = 'm', liunian_years } = options;
+  const { calendar = 'solar', gender = 'm', liunian_years, longitude = 120, dst_assumed = null, province, city, birthplace } = options;
+
+  // 时间校正：解析出生地经度 + 夏令时 + 真太阳时
+  let timeCorrection: BaziChart['time_correction'] = null;
+  if (calendar === 'solar') {
+    const resolvedLon = (() => {
+      if (longitude !== 120) return longitude;           // 手动指定经度
+      if (province && city) {
+        const loc = findLocation(province, city);
+        if (loc) return loc.longitude;
+      }
+      return 120;
+    })();
+    const resolvedBirthplace = birthplace || (province && city ? `${province}${city}` : '');
+
+    const needCorrection = Math.abs(resolvedLon - 120) > 0.001 || dst_assumed !== null;
+    if (needCorrection) {
+      const correction = correctTime(new Date(year, month - 1, day, hour, minute), resolvedLon, dst_assumed);
+      year = correction.corrected.getFullYear();
+      month = correction.corrected.getMonth() + 1;
+      day = correction.corrected.getDate();
+      hour = correction.corrected.getHours();
+      minute = correction.corrected.getMinutes();
+      timeCorrection = {
+        original_time: correction.original.toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-'),
+        corrected_time: correction.corrected.toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-'),
+        dst_applied: correction.dstApplied,
+        longitude: correction.longitude,
+        longitude_offset_min: correction.longitudeOffsetMin,
+        eot_min: correction.eotMin,
+        applied: true,
+        birthplace: resolvedBirthplace,
+      };
+    }
+  }
 
   let solar: Solar;
   let lunar: Lunar;
@@ -294,6 +343,7 @@ export function buildChart(
     pillars, day_master: ec.getDayGan(), nayin, wuxing, elements, gender,
     solar_display: solar.toFullString(), lunar_display: lunar.toFullString(),
     details, extra, yun, liunian, shensha: {}, shensha_detail: {}, analysis: {},
+    time_correction: timeCorrection,
   };
   chart.shensha = findShensha(chart);
   chart.shensha_detail = {};
